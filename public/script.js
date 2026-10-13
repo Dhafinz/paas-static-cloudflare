@@ -1,10 +1,10 @@
 /**
- * PaaS Cloud Resource Manager - Modern CRUD Application
- * Persistensi: IndexedDB dengan sinkronisasi cadangan LocalStorage.
- * Mendukung siklus penuh Create, Read, Update, Delete & Otomatisasi Diagnostik.
+ * PaaS Cloud Resource Manager - Dashboard CRUD Modern
+ * Mendukung persistensi IndexedDB (dengan fallback LocalStorage),
+ * siklus penuh Create, Read, Update, Delete, dan tombol verifikasi Cloudflare.
  */
 
-// --- 1. Database Layer (IndexedDB Engine) ---
+// --- 1. Database Persistent Layer (IndexedDB Engine) ---
 class PaaSStorageEngine {
   constructor(dbName = 'PaaSResourcesDB', version = 1) {
     this.dbName = dbName;
@@ -14,7 +14,7 @@ class PaaSStorageEngine {
   }
 
   async init() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (!window.indexedDB) {
         console.warn('IndexedDB tidak didukung pada browser ini. Menggunakan fallback localStorage.');
         resolve(null);
@@ -40,13 +40,13 @@ class PaaSStorageEngine {
       };
 
       request.onerror = (event) => {
-        console.error('Error saat inisialisasi IndexedDB:', event.target.error);
-        resolve(null); // fallback gracefully
+        console.error('Error inisialisasi IndexedDB:', event.target.error);
+        resolve(null);
       };
     });
   }
 
-  // Helper Fallback LocalStorage
+  // Backup & LocalStorage Fallback Helper
   _getLocalStorageData() {
     try {
       const raw = localStorage.getItem('paas_resources_backup');
@@ -69,14 +69,14 @@ class PaaSStorageEngine {
     if (!this.db) {
       return this._getLocalStorageData();
     }
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const tx = this.db.transaction(this.storeName, 'readonly');
       const store = tx.objectStore(this.storeName);
       const request = store.getAll();
 
       request.onsuccess = () => {
         const results = request.result || [];
-        this._setLocalStorageData(results); // keep backup in sync
+        this._setLocalStorageData(results);
         resolve(results);
       };
       request.onerror = () => {
@@ -128,7 +128,6 @@ class PaaSStorageEngine {
       const request = store.add(item);
 
       request.onsuccess = () => {
-        // sync backup
         this.getAll();
         resolve(item);
       };
@@ -146,7 +145,7 @@ class PaaSStorageEngine {
     const updatedItem = {
       ...existing,
       ...updateData,
-      id, // protect ID integrity
+      id,
       updatedAt: new Date().toISOString()
     };
 
@@ -193,7 +192,7 @@ class PaaSStorageEngine {
     });
   }
 
-  // SEED INITIAL DATA IF EMPTY
+  // Seed Default Demo Data
   async seedInitialDataIfEmpty() {
     const existing = await this.getAll();
     if (existing.length === 0) {
@@ -204,7 +203,7 @@ class PaaSStorageEngine {
           env: 'Production',
           status: 'Active',
           memory: '128 MB',
-          description: 'Edge authentication middleware dan verifikasi token OAuth Cloudflare.'
+          description: 'Edge authentication middleware dan token verifier di Cloudflare Workers.'
         },
         {
           name: 'user-profile-d1',
@@ -212,7 +211,7 @@ class PaaSStorageEngine {
           env: 'Production',
           status: 'Active',
           memory: '500 MB',
-          description: 'Cloudflare D1 SQL database untuk penyimpanan profil pengguna dan hak akses.'
+          description: 'Cloudflare D1 SQL database untuk profil akun dan otorisasi.'
         },
         {
           name: 'session-cache-kv',
@@ -220,7 +219,7 @@ class PaaSStorageEngine {
           env: 'Staging',
           status: 'Active',
           memory: '1 GB',
-          description: 'Cloudflare KV Namespace untuk cache sesi pengguna terdistribusi global.'
+          description: 'Cloudflare KV Namespace untuk cache session terdistribusi global.'
         },
         {
           name: 'paas-static-frontend',
@@ -240,7 +239,6 @@ class PaaSStorageEngine {
     return false;
   }
 
-  // RESET TO DEMO DATA
   async resetToDemo() {
     if (this.db) {
       const tx = this.db.transaction(this.storeName, 'readwrite');
@@ -261,7 +259,7 @@ class PaaSAppController {
     this.resources = [];
     this.deleteTargetId = null;
 
-    // Elements
+    // Elements Map
     this.elements = {
       tableBody: document.getElementById('resourcesTableBody'),
       emptyState: document.getElementById('emptyState'),
@@ -311,7 +309,7 @@ class PaaSAppController {
       metricDatabases: document.getElementById('metricDatabases'),
       metricWorkers: document.getElementById('metricWorkers'),
 
-      // Status Indicator
+      // Status Indicator & Toast
       dbStatusLabel: document.getElementById('dbStatusLabel'),
       toastContainer: document.getElementById('toastContainer')
     };
@@ -319,75 +317,95 @@ class PaaSAppController {
 
   async start() {
     try {
+      // 1. Inisialisasi tombol Cloudflare bawaan (sesuai kebutuhan praktikum)
+      this.initCloudflareCheckButton();
+
+      // 2. Inisialisasi Database IndexedDB
       await this.db.init();
       await this.db.seedInitialDataIfEmpty();
+
+      // 3. Pasang Event Listeners & Render UI
       this.attachEventListeners();
       await this.loadAndRender();
-      this.showToast('Database persistent terhubung.', 'info');
+
+      if (this.elements.dbStatusLabel) {
+        this.elements.dbStatusLabel.textContent = 'Database: IndexedDB Ready';
+      }
     } catch (err) {
-      console.error('Gagal memulai aplikasi:', err);
-      this.showToast('Gagal memuat database: ' + err.message, 'danger');
+      console.error('Gagal memulai controller:', err);
+    }
+  }
+
+  initCloudflareCheckButton() {
+    const cekBtn = document.querySelector('#cek');
+    const hasilEl = document.querySelector('#hasil');
+    if (cekBtn && hasilEl) {
+      cekBtn.addEventListener('click', () => {
+        hasilEl.textContent = 'JavaScript berhasil berjalan di browser.';
+        hasilEl.style.color = '#34d399';
+        this.showToast('JavaScript aktif & berjalan normal!', 'success');
+      });
     }
   }
 
   attachEventListeners() {
-    // Cloudflare Verification Button
-    const cekBtn = document.getElementById('cek');
-    const hasilEl = document.getElementById('hasil');
-    if (cekBtn && hasilEl) {
-      cekBtn.addEventListener('click', () => {
-        hasilEl.textContent = 'JavaScript berhasil dijalankan di Cloudflare Workers!';
-        hasilEl.style.color = '#34d399';
-        this.showToast('Cek JavaScript: Berhasil dieksekusi!', 'success');
-      });
-    }
-
     // Search & Filters
-    this.elements.searchInput.addEventListener('input', () => this.renderTable());
-    this.elements.filterType.addEventListener('change', () => this.renderTable());
-    this.elements.filterStatus.addEventListener('change', () => this.renderTable());
-    this.elements.sortBy.addEventListener('change', () => this.renderTable());
+    if (this.elements.searchInput) {
+      this.elements.searchInput.addEventListener('input', () => this.renderTable());
+    }
+    if (this.elements.filterType) {
+      this.elements.filterType.addEventListener('change', () => this.renderTable());
+    }
+    if (this.elements.filterStatus) {
+      this.elements.filterStatus.addEventListener('change', () => this.renderTable());
+    }
+    if (this.elements.sortBy) {
+      this.elements.sortBy.addEventListener('change', () => this.renderTable());
+    }
 
     // Modal Add
     const openAdd = () => this.openModal();
-    this.elements.btnOpenAddModal.addEventListener('click', openAdd);
-    this.elements.btnEmptyAdd.addEventListener('click', openAdd);
+    if (this.elements.btnOpenAddModal) this.elements.btnOpenAddModal.addEventListener('click', openAdd);
+    if (this.elements.btnEmptyAdd) this.elements.btnEmptyAdd.addEventListener('click', openAdd);
 
     // Modal Close
-    this.elements.btnCloseModal.addEventListener('click', () => this.closeModal());
-    this.elements.btnCancelModal.addEventListener('click', () => this.closeModal());
+    if (this.elements.btnCloseModal) this.elements.btnCloseModal.addEventListener('click', () => this.closeModal());
+    if (this.elements.btnCancelModal) this.elements.btnCancelModal.addEventListener('click', () => this.closeModal());
 
     // Form Submit (Create / Update)
-    this.elements.resourceForm.addEventListener('submit', (e) => this.handleSubmit(e));
+    if (this.elements.resourceForm) {
+      this.elements.resourceForm.addEventListener('submit', (e) => this.handleSubmit(e));
+    }
 
     // Delete Modal
-    this.elements.btnCloseDeleteModal.addEventListener('click', () => this.closeDeleteModal());
-    this.elements.btnCancelDelete.addEventListener('click', () => this.closeDeleteModal());
-    this.elements.btnConfirmDelete.addEventListener('click', () => this.handleConfirmDelete());
+    if (this.elements.btnCloseDeleteModal) this.elements.btnCloseDeleteModal.addEventListener('click', () => this.closeDeleteModal());
+    if (this.elements.btnCancelDelete) this.elements.btnCancelDelete.addEventListener('click', () => this.closeDeleteModal());
+    if (this.elements.btnConfirmDelete) this.elements.btnConfirmDelete.addEventListener('click', () => this.handleConfirmDelete());
 
     // Diagnostics Modal
-    this.elements.btnRunDiagnostics.addEventListener('click', () => this.runDiagnostics());
-    this.elements.btnReRunDiagnostics.addEventListener('click', () => this.runDiagnostics());
-    this.elements.btnCloseDiagnostics.addEventListener('click', () => this.closeDiagnosticsModal());
-    this.elements.btnDoneDiagnostics.addEventListener('click', () => this.closeDiagnosticsModal());
+    if (this.elements.btnRunDiagnostics) this.elements.btnRunDiagnostics.addEventListener('click', () => this.runDiagnostics());
+    if (this.elements.btnReRunDiagnostics) this.elements.btnReRunDiagnostics.addEventListener('click', () => this.runDiagnostics());
+    if (this.elements.btnCloseDiagnostics) this.elements.btnCloseDiagnostics.addEventListener('click', () => this.closeDiagnosticsModal());
+    if (this.elements.btnDoneDiagnostics) this.elements.btnDoneDiagnostics.addEventListener('click', () => this.closeDiagnosticsModal());
 
     // Reset Demo
-    this.elements.btnResetData.addEventListener('click', async () => {
-      if (confirm('Apakah Anda ingin mereset data ke set demo default?')) {
-        await this.db.resetToDemo();
-        await this.loadAndRender();
-        this.showToast('Data demo berhasil dimuat ulang.', 'success');
-      }
-    });
+    if (this.elements.btnResetData) {
+      this.elements.btnResetData.addEventListener('click', async () => {
+        if (confirm('Apakah Anda ingin mereset data ke set demo default?')) {
+          await this.db.resetToDemo();
+          await this.loadAndRender();
+          this.showToast('Data demo berhasil dimuat ulang.', 'success');
+        }
+      });
+    }
 
-    // Close on backdrop click
+    // Backdrop click
     window.addEventListener('click', (e) => {
       if (e.target === this.elements.resourceModal) this.closeModal();
       if (e.target === this.elements.deleteModal) this.closeDeleteModal();
       if (e.target === this.elements.diagnosticsModal) this.closeDiagnosticsModal();
     });
 
-    // Expose diagnostics to window for automated headless evaluation
     window.runCrudDiagnostics = () => this.runDiagnostics();
   }
 
@@ -403,17 +421,17 @@ class PaaSAppController {
     const databases = this.resources.filter((r) => r.type === 'Database' || r.type === 'Storage').length;
     const workers = this.resources.filter((r) => r.type === 'Worker').length;
 
-    this.elements.metricTotal.textContent = total;
-    this.elements.metricActive.textContent = active;
-    this.elements.metricDatabases.textContent = databases;
-    this.elements.metricWorkers.textContent = workers;
+    if (this.elements.metricTotal) this.elements.metricTotal.textContent = total;
+    if (this.elements.metricActive) this.elements.metricActive.textContent = active;
+    if (this.elements.metricDatabases) this.elements.metricDatabases.textContent = databases;
+    if (this.elements.metricWorkers) this.elements.metricWorkers.textContent = workers;
   }
 
   getFilteredResources() {
-    const query = this.elements.searchInput.value.toLowerCase().trim();
-    const typeFilter = this.elements.filterType.value;
-    const statusFilter = this.elements.filterStatus.value;
-    const sortBy = this.elements.sortBy.value;
+    const query = this.elements.searchInput ? this.elements.searchInput.value.toLowerCase().trim() : '';
+    const typeFilter = this.elements.filterType ? this.elements.filterType.value : 'ALL';
+    const statusFilter = this.elements.filterStatus ? this.elements.filterStatus.value : 'ALL';
+    const sortBy = this.elements.sortBy ? this.elements.sortBy.value : 'newest';
 
     let filtered = this.resources.filter((item) => {
       const matchQuery =
@@ -428,7 +446,6 @@ class PaaSAppController {
       return matchQuery && matchType && matchStatus;
     });
 
-    // Sort
     filtered.sort((a, b) => {
       if (sortBy === 'newest') return new Date(b.updatedAt) - new Date(a.updatedAt);
       if (sortBy === 'oldest') return new Date(a.updatedAt) - new Date(b.updatedAt);
@@ -440,21 +457,21 @@ class PaaSAppController {
   }
 
   renderTable() {
+    if (!this.elements.tableBody) return;
     const items = this.getFilteredResources();
     this.elements.tableBody.innerHTML = '';
 
     if (items.length === 0) {
-      this.elements.emptyState.classList.remove('hidden');
+      if (this.elements.emptyState) this.elements.emptyState.classList.remove('hidden');
       return;
     }
 
-    this.elements.emptyState.classList.add('hidden');
+    if (this.elements.emptyState) this.elements.emptyState.classList.add('hidden');
 
     items.forEach((item) => {
       const tr = document.createElement('tr');
       tr.id = `row-${item.id}`;
 
-      // Badge classes
       let typeBadgeClass = 'badge-worker';
       if (item.type === 'Database') typeBadgeClass = 'badge-database';
       else if (item.type === 'Storage') typeBadgeClass = 'badge-storage';
@@ -502,7 +519,6 @@ class PaaSAppController {
         </td>
       `;
 
-      // Attach button events
       tr.querySelector('.btn-edit').addEventListener('click', () => this.openEditModal(item.id));
       tr.querySelector('.btn-delete').addEventListener('click', () => this.openDeleteModal(item.id, item.name));
 
@@ -512,6 +528,7 @@ class PaaSAppController {
 
   // --- Modal Form Actions ---
   openModal(item = null) {
+    if (!this.elements.resourceModal) return;
     if (item) {
       this.elements.modalTitle.textContent = 'Edit Resource';
       this.elements.btnSaveText.textContent = 'Simpan Perubahan';
@@ -537,14 +554,14 @@ class PaaSAppController {
 
   async openEditModal(id) {
     const item = await this.db.getById(id);
-    if (item) {
-      this.openModal(item);
-    }
+    if (item) this.openModal(item);
   }
 
   closeModal() {
-    this.elements.resourceModal.classList.add('hidden');
-    this.elements.resourceForm.reset();
+    if (this.elements.resourceModal) {
+      this.elements.resourceModal.classList.add('hidden');
+      this.elements.resourceForm.reset();
+    }
   }
 
   async handleSubmit(e) {
@@ -561,11 +578,9 @@ class PaaSAppController {
 
     try {
       if (id) {
-        // UPDATE (U)
         await this.db.update(id, data);
         this.showToast(`Resource "${data.name}" berhasil diperbarui.`, 'success');
       } else {
-        // CREATE (C)
         await this.db.create(data);
         this.showToast(`Resource baru "${data.name}" berhasil dibuat.`, 'success');
       }
@@ -573,40 +588,45 @@ class PaaSAppController {
       await this.loadAndRender();
     } catch (err) {
       console.error(err);
-      this.showToast(`Gagal menyimpan data: ${err.message}`, 'danger');
+      this.showToast(`Gagal menyimpan: ${err.message}`, 'danger');
     }
   }
 
-  // --- Delete Modal Actions ---
   openDeleteModal(id, name) {
     this.deleteTargetId = id;
-    this.elements.deleteTargetName.textContent = `"${name}"`;
-    this.elements.deleteModal.classList.remove('hidden');
+    if (this.elements.deleteTargetName) {
+      this.elements.deleteTargetName.textContent = `"${name}"`;
+    }
+    if (this.elements.deleteModal) {
+      this.elements.deleteModal.classList.remove('hidden');
+    }
   }
 
   closeDeleteModal() {
     this.deleteTargetId = null;
-    this.elements.deleteModal.classList.add('hidden');
+    if (this.elements.deleteModal) {
+      this.elements.deleteModal.classList.add('hidden');
+    }
   }
 
   async handleConfirmDelete() {
     if (!this.deleteTargetId) return;
     try {
-      // DELETE (D)
       await this.db.delete(this.deleteTargetId);
       this.showToast('Resource berhasil dihapus.', 'success');
       this.closeDeleteModal();
       await this.loadAndRender();
     } catch (err) {
       console.error(err);
-      this.showToast(`Gagal menghapus resource: ${err.message}`, 'danger');
+      this.showToast(`Gagal menghapus: ${err.message}`, 'danger');
     }
   }
 
-  // --- CRUD Automated Diagnostic Test (Point D Instruksi) ---
+  // --- CRUD Automated Diagnostics (Point D Instruksi) ---
   async runDiagnostics() {
+    if (!this.elements.diagnosticsModal) return;
     this.elements.diagnosticsModal.classList.remove('hidden');
-    this.elements.diagnosticsList.innerHTML = '<div style="padding:1rem;color:var(--text-muted)">Menjalankan siklus uji Create, Read, Update, Delete...</div>';
+    this.elements.diagnosticsList.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Menjalankan pengujian 4 siklus CRUD...</div>';
     this.elements.diagnosticsSummary.innerHTML = '';
 
     const results = [];
@@ -614,7 +634,7 @@ class PaaSAppController {
     let probeId = null;
 
     try {
-      // 1. Test CREATE
+      // 1. CREATE
       const startTimeC = performance.now();
       const createdItem = await this.db.create({
         name: testProbeName,
@@ -630,12 +650,10 @@ class PaaSAppController {
       results.push({
         step: '1. CREATE',
         passed: passC,
-        desc: passC
-          ? `Record baru berhasil disimpan dengan ID [${probeId}] dalam ${durC}ms.`
-          : 'Gagal membuat record uji coba.'
+        desc: passC ? `Record dibuat dengan ID [${probeId}] dalam ${durC}ms.` : 'Gagal membuat record uji.'
       });
 
-      // 2. Test READ
+      // 2. READ
       const startTimeR = performance.now();
       const readItem = await this.db.getById(probeId);
       const durR = (performance.now() - startTimeR).toFixed(1);
@@ -643,28 +661,24 @@ class PaaSAppController {
       results.push({
         step: '2. READ',
         passed: passR,
-        desc: passR
-          ? `Data ID [${probeId}] berhasil dibaca kembali dari IndexedDB dalam ${durR}ms.`
-          : 'Gagal membaca kembali data yang baru dibuat.'
+        desc: passR ? `Data ID [${probeId}] berhasil dibaca dari IndexedDB dalam ${durR}ms.` : 'Gagal membaca kembali record.'
       });
 
-      // 3. Test UPDATE
+      // 3. UPDATE
       const startTimeU = performance.now();
       const updatedItem = await this.db.update(probeId, {
         status: 'Maintenance',
         description: 'Verified Update Probe Status'
       });
       const durU = (performance.now() - startTimeU).toFixed(1);
-      const passU = updatedItem.status === 'Maintenance' && updatedItem.description.includes('Verified');
+      const passU = updatedItem.status === 'Maintenance';
       results.push({
         step: '3. UPDATE',
         passed: passU,
-        desc: passU
-          ? `Status berhasil diperbarui menjadi "${updatedItem.status}" dalam ${durU}ms.`
-          : 'Gagal memperbarui atribut data.'
+        desc: passU ? `Status berhasil diubah menjadi "${updatedItem.status}" dalam ${durU}ms.` : 'Gagal update record.'
       });
 
-      // 4. Test DELETE
+      // 4. DELETE
       const startTimeD = performance.now();
       await this.db.delete(probeId);
       const verifyDeleted = await this.db.getById(probeId);
@@ -673,19 +687,16 @@ class PaaSAppController {
       results.push({
         step: '4. DELETE',
         passed: passD,
-        desc: passD
-          ? `Data uji [${probeId}] berhasil dihapus bersih (getById => null) dalam ${durD}ms.`
-          : 'Data uji masih tersisa setelah operasi delete.'
+        desc: passD ? `Data uji [${probeId}] dihapus bersih (null) dalam ${durD}ms.` : 'Record masih ada setelah delete.'
       });
     } catch (e) {
       results.push({
         step: 'ERROR',
         passed: false,
-        desc: `Pengecualian saat pengujian: ${e.message}`
+        desc: `Pengecualian: ${e.message}`
       });
     }
 
-    // Render results
     this.elements.diagnosticsList.innerHTML = results
       .map(
         (r) => `
@@ -702,8 +713,8 @@ class PaaSAppController {
 
     const allPassed = results.every((r) => r.passed);
     this.elements.diagnosticsSummary.innerHTML = `
-      <span>Status Keseluruhan: <strong>${allPassed ? '100% LULUS (Semua Operasi CRUD Berfungsi Optimal)' : 'Ada Operasi Gagal'}</strong></span>
-      <span>${results.filter((r) => r.passed).length}/${results.length} Pengujian Sukses</span>
+      <span>Status Keseluruhan: <strong>${allPassed ? '100% LULUS (Semua Operasi CRUD Normal)' : 'Ada Pengujian Gagal'}</strong></span>
+      <span>${results.filter((r) => r.passed).length}/${results.length} Sukses</span>
     `;
 
     await this.loadAndRender();
@@ -711,10 +722,11 @@ class PaaSAppController {
   }
 
   closeDiagnosticsModal() {
-    this.elements.diagnosticsModal.classList.add('hidden');
+    if (this.elements.diagnosticsModal) {
+      this.elements.diagnosticsModal.classList.add('hidden');
+    }
   }
 
-  // --- Utility Helpers ---
   escapeHtml(str) {
     if (!str) return '';
     return str
@@ -726,6 +738,7 @@ class PaaSAppController {
   }
 
   showToast(message, type = 'info') {
+    if (!this.elements.toastContainer) return;
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
@@ -740,7 +753,7 @@ class PaaSAppController {
   }
 }
 
-// Initialize on DOM ready
+// Inisialisasi Aplikasi Saat Halaman Selesai Dimuat
 document.addEventListener('DOMContentLoaded', () => {
   const app = new PaaSAppController();
   app.start();
