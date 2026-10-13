@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PaaS Static Deployment & Cloud Resource Manager - Dashboard CRUD Modern di Cloudflare Static Assets dengan database persistent lokal.">
+  <title>PaaS Static Deployment & Resource Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header & Navigation -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h2>PaaS Cloud Platform</h2>
+          <span class="brand-badge">Cloudflare Static Assets • Production Ready</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="system-status-indicator" id="systemStatus">
+          <span class="status-dot pulse"></span>
+          <span class="status-label" id="dbStatusLabel">Database: IndexedDB Ready</span>
+        </div>
+        <button id="btnRunDiagnostics" class="btn btn-outline" title="Jalankan Uji Otomatis CRUD">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>Uji Verifikasi CRUD</span>
+        </button>
+        <button id="btnOpenAddModal" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Tambah Resource</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-main">
+    <div class="main-container">
+      <!-- Section: Cloudflare Status & JS Verification (Baseline Element Terlindungi) -->
+      <section class="banner-card">
+        <div class="banner-content">
+          <h1>Hello Cloudflare!</h1>
+          <p>Website ini dideploy dari GitHub ke Cloudflare Workers.</p>
+          <div class="banner-actions">
+            <button id="cek" class="btn btn-primary">Cek JavaScript</button>
+            <p id="hasil" class="hasil-text"></p>
+          </div>
+        </div>
+        <div class="banner-badge-box">
+          <span class="env-pill">Worker Name: <code>paas-static-dhafin</code></span>
+          <span class="env-pill">Asset Directory: <code>./public</code></span>
+        </div>
+      </section>
+
+      <!-- Quick Metric Cards -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon metric-icon-blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/>
+              <rect width="20" height="8" x="2" y="14" rx="2" ry="2"/>
+              <line x1="6" x2="6.01" y1="6" y2="6"/>
+              <line x1="6" x2="6.01" y1="18" y2="18"/>
+            </svg>
+          </div>
+          <div class="metric-info">
+            <span class="metric-title">Total Resources</span>
+            <span class="metric-value" id="metricTotal">0</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon metric-icon-green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div class="metric-info">
+            <span class="metric-title">Active Services</span>
+            <span class="metric-value" id="metricActive">0</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon metric-icon-purple">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/>
+              <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+              <path d="M3 12A9 3 0 0 0 21 12"/>
+            </svg>
+          </div>
+          <div class="metric-info">
+            <span class="metric-title">Database & KV</span>
+            <span class="metric-value" id="metricDatabases">0</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon metric-icon-amber">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
+          <div class="metric-info">
+            <span class="metric-title">Workers & Compute</span>
+            <span class="metric-value" id="metricWorkers">0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filter, Search & Actions Bar -->
+      <section class="controls-card">
+        <div class="search-box">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Cari nama resource, tipe, atau deskripsi..." autocomplete="off">
+        </div>
+
+        <div class="filters-row">
+          <div class="select-group">
+            <label for="filterType">Tipe:</label>
+            <select id="filterType">
+              <option value="ALL">Semua Tipe</option>
+              <option value="Worker">Worker / Compute</option>
+              <option value="Database">Database (D1)</option>
+              <option value="Storage">Storage (KV/R2)</option>
+              <option value="Static Asset">Static Asset</option>
+            </select>
+          </div>
+
+          <div class="select-group">
+            <label for="filterStatus">Status:</label>
+            <select id="filterStatus">
+              <option value="ALL">Semua Status</option>
+              <option value="Active">Active</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+
+          <div class="select-group">
+            <label for="sortBy">Urutkan:</label>
+            <select id="sortBy">
+              <option value="newest">Terbaru</option>
+              <option value="oldest">Terlama</option>
+              <option value="name">Nama (A-Z)</option>
+            </select>
+          </div>
+
+          <button id="btnResetData" class="btn btn-ghost" title="Reset ke data awal jika perlu">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+            <span>Reset Demo</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Resources List / Table (Read Operation) -->
+      <section class="content-section">
+        <div class="table-container">
+          <table class="data-table" id="resourcesTable">
+            <thead>
+              <tr>
+                <th>Nama Resource</th>
+                <th>Tipe</th>
+                <th>Environment</th>
+                <th>Status</th>
+                <th>Terakhir Diperbarui</th>
+                <th class="text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="resourcesTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+          <div id="emptyState" class="empty-state hidden">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+            </div>
+            <h3>Tidak Ada Resource Ditemukan</h3>
+            <p>Belum ada data resource yang cocok dengan kriteria pencarian Anda.</p>
+            <button id="btnEmptyAdd" class="btn btn-primary">Tambah Resource Baru</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <p>PaaS Static Cloudflare Dashboard • Production CRUD Protected</p>
+      <div class="footer-meta">
+        <span>Repo: <code>paas-static-cloudflare</code></span>
+        <span>Storage: <code>IndexedDB Persistent Engine</code></span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Modal: Tambah / Edit Resource (Create & Update Operation) -->
+  <div id="resourceModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTitle">Tambah Resource Baru</h3>
+        <button id="btnCloseModal" class="btn-close" aria-label="Tutup Modal">&times;</button>
+      </div>
+      <form id="resourceForm" class="modal-form">
+        <input type="hidden" id="resourceId" value="">
+
+        <div class="form-group">
+          <label for="resourceName">Nama Resource <span class="required">*</span></label>
+          <input type="text" id="resourceName" placeholder="Contoh: auth-worker-api" required autocomplete="off">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="resourceType">Tipe Resource <span class="required">*</span></label>
+            <select id="resourceType" required>
+              <option value="Worker">Worker / Compute</option>
+              <option value="Database">Database (D1)</option>
+              <option value="Storage">Storage (KV/R2)</option>
+              <option value="Static Asset">Static Asset</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="resourceEnv">Environment <span class="required">*</span></label>
+            <select id="resourceEnv" required>
+              <option value="Production">Production</option>
+              <option value="Staging">Staging</option>
+              <option value="Development">Development</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="resourceStatus">Status <span class="required">*</span></label>
+            <select id="resourceStatus" required>
+              <option value="Active">Active</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="resourceMemory">Alokasi / Kapasitas</label>
+            <input type="text" id="resourceMemory" placeholder="Contoh: 128 MB / 5 GB">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="resourceDescription">Deskripsi & Catatan</label>
+          <textarea id="resourceDescription" rows="3" placeholder="Deskripsi fungsional resource..."></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btnCancelModal" class="btn btn-secondary">Batal</button>
+          <button type="submit" id="btnSaveResource" class="btn btn-primary">
+            <span id="btnSaveText">Simpan Resource</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Konfirmasi Hapus (Delete Operation) -->
+  <div id="deleteModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3>Konfirmasi Hapus Resource</h3>
+        <button id="btnCloseDeleteModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Apakah Anda yakin ingin menghapus resource <strong id="deleteTargetName"></strong>?</p>
+        <p class="modal-warning-text">Tindakan ini akan menghapus entri dari database lokal.</p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btnCancelDelete" class="btn btn-secondary">Batal</button>
+        <button type="button" id="btnConfirmDelete" class="btn btn-danger">Hapus Sekarang</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Verifikasi & Diagnostik CRUD (Point D Instruksi) -->
+  <div id="diagnosticsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <h3>Hasil Diagnostik Uji Otomatis CRUD</h3>
+        <button id="btnCloseDiagnostics" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="diagnostics-desc">
+          Pengujian memverifikasi 4 siklus operasi (Create &rarr; Read &rarr; Update &rarr; Delete) secara real-time pada database IndexedDB:
+        </p>
+        <div id="diagnosticsList" class="diagnostics-list">
+          <!-- Populated by JS -->
+        </div>
+        <div id="diagnosticsSummary" class="diagnostics-summary">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btnReRunDiagnostics" class="btn btn-outline">Uji Ulang</button>
+        <button type="button" id="btnDoneDiagnostics" class="btn btn-primary">Selesai</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
